@@ -109,7 +109,6 @@ from sqlalchemy import func
 
 def LoadData(csvfile, userid, dtformat = None):
     #con = connectDB()
-    csvfile='C:\\Users\\a_rathi\\LocalDocuments\\IT\\3105736_2019EOFYTransactions.csv'
     df  = pd.read_csv(csvfile)
     dd = df.to_dict('records')
     file_len = len(dd)
@@ -163,7 +162,9 @@ def LoadData(csvfile, userid, dtformat = None):
                     BrokerageGST	=       csvline['Brokerage+GST ($)'] ,
                     GST				=       csvline['GST ($)']           ,
                     ContractNote	=       csvline['Contract Note']     ,
-                    TotalValue		=       csvline['Total Value ($)']   
+                    TotalValue		=       csvline['Total Value ($)']   ,
+                    UpdateDate      = datetime.datetime.now(),
+                    UpdateFile      = csvfile
                     )
                 session.execute(insert_stmnt)
             insert_stmnt = ifiles.insert().values(
