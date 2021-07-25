@@ -112,10 +112,11 @@ def LoadData(csvfile, userid, dtformat = None):
     csvfile='C:\\Users\\a_rathi\\LocalDocuments\\IT\\3105736_2019EOFYTransactions.csv'
     df  = pd.read_csv(csvfile)
     dd = df.to_dict('records')
-    print(dd[0])
+    file_len = len(dd)
     engine = connectDB()
     tradetable = getTable(engine, tablename='trade')
     company = getTable(engine, tablename='company')
+    ifiles = getTable(engine, tablename='files')
     count_ = func.count('*')
     #tradetableClass = tradetable.__class__
     with Session(engine) as session:
@@ -135,7 +136,9 @@ def LoadData(csvfile, userid, dtformat = None):
                     session.execute(insert_stmnt) 
     with Session(engine) as session:
         with session.begin():
+            inscount = 0
             for csvline in dd:
+                inscount = inscount+1
                 isCompanyExist = session.query(company.c.Code, count_).filter(company.c.Code == csvline['Code']).all()
                 print(f"isCompanyExist= {isCompanyExist}")
                 if(isCompanyExist[0][1]<1): 
@@ -162,7 +165,17 @@ def LoadData(csvfile, userid, dtformat = None):
                     ContractNote	=       csvline['Contract Note']     ,
                     TotalValue		=       csvline['Total Value ($)']   
                     )
-                session.execute(insert_stmnt) 
+                session.execute(insert_stmnt)
+            insert_stmnt = ifiles.insert().values(
+                    UserUid = userid,
+                    FileName = csvfile, 
+                    Filecount = file_len,
+                    Insertcount = inscount,
+                    uploadDate = datetime.datetime.today()
+                    )
+            session.execute(insert_stmnt) 
 
 LoadData(csvfile='C:\\Users\\a_rathi\\LocalDocuments\\IT\\3105736_2019EOFYTransactions.csv', userid=1)
+LoadData(csvfile='C:\\Users\\a_rathi\\LocalDocuments\\IT\\3105736_2020EOFYTransactions.csv', userid=1)
+LoadData(csvfile='C:\\Users\\a_rathi\\LocalDocuments\\IT\\3105736_2021EOFYTransactions.csv', userid=1)
  
