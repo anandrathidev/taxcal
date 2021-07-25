@@ -7,7 +7,9 @@ Code VARCHAR(25) PRIMARY KEY,
 Company VARCHAR(2000)  NOT NULL,
 Listingdate  DATE,
 GICsindustrygroup VARCHAR(512),
-MarketCap BIGINT UNSIGNED 
+MarketCap BIGINT UNSIGNED, 
+UpdateDate DATE NOT NULL  DEFAULT CURRENT_TIMESTAMP, 
+UpdateFile VARCHAR(2000) NOT NULL DEFAULT 'ByUser'
 );
 
 CREATE  OR REPLACE TABLE User (
@@ -33,7 +35,8 @@ BrokerageGST DOUBLE(16,4) zerofill NOT NULL ,
 GST DOUBLE(16,4) zerofill,
 ContractNote VARCHAR(1000) NOT NULL ,
 TotalValue DOUBLE,
-
+UpdateDate DATE NOT NULL,
+UpdateFile VARCHAR(2000) NOT NULL,
 CONSTRAINT `fk_trade_company`
     FOREIGN KEY (Code) REFERENCES company (Code),
 CONSTRAINT `fk_trade_user`
@@ -51,6 +54,7 @@ SellUID BIGINT UNSIGNED NOT NULL ,
 BuyUID  BIGINT UNSIGNED NOT NULL ,
 SellDate DATE,
 BuyDate DATE,
+UpdateDate DATE NOT NULL  DEFAULT CURRENT_TIMESTAMP, 
 CONSTRAINT `fk_trademapping_company`
     FOREIGN KEY (SellCode) REFERENCES company (Code),
 CONSTRAINT `fk_trademapping_user`
@@ -61,25 +65,17 @@ CONSTRAINT `fk_trademapping_buy`
     FOREIGN KEY (BuyUID) REFERENCES trade (UID)
 );
 
-
-
-
-insert into User (Name , Postcode , Country , Email ) values ('Anand Rathi', '6011', 'Australia', '' );
-
-LOAD DATA LOCAL INFILE 'C:/Users/a_rathi/LocalDocuments/IT/ASX_Listed_Companies_22-07-2021_03-01-26_AEST.csv' INTO TABLE stocks.company FIELDS TERMINATED BY ',' ENCLOSED BY '"' LINES  TERMINATED BY '\n' IGNORE 1 ROWS (Code, Company, Listingdate, GICsindustrygroup, MarketCap );
-
-delete * from trade;
-
-# LOAD DATA LOCAL INFILE 'C:/Users/a_rathi/LocalDocuments/IT/3105736_2019EOFYTransactions.csv' INTO TABLE stocks.trade FIELDS TERMINATED BY ',' ENCLOSED BY '"' LINES  TERMINATED BY  '\n' IGNORE 1 ROWS (@Code,@Company,@Date,@Type,@Quantity,@UnitPrice,@TradeValue,@BrokerageGST,@GST, @ContractNote, @TotalValue) set UserUid=1, Code=@Code , Date=STR_TO_DATE(@Date,'%d/%m/%y'),  Type=@Type,   Quantity=IF(@Quantity like '-%', @Quantity * -1, @Quantity), UnitPrice=@UnitPrice, TradeValue=IF(@TradeValue like '-%', @TradeValue * -1, @TradeValue) , BrokerageGST= @BrokerageGST,  GST=@GST,  ContractNote=@ContractNote,  TotalValue=IF(@TotalValue like '-%', @TotalValue * -1, @TotalValue) ;
-
-#LOAD DATA LOCAL INFILE 'C:/Users/a_rathi/LocalDocuments/IT/3105736_2020EOFYTransactions.csv' INTO TABLE stocks.trade FIELDS TERMINATED BY ',' ENCLOSED BY '"' LINES  TERMINATED BY '\n' IGNORE 1 ROWS (@Code,@Company,@Date,@Type,@Quantity,@UnitPrice,@TradeValue,@BrokerageGST,@GST, @ContractNote, @TotalValue) set UserUid=1, Code=@Code , Date=STR_TO_DATE(@Date,'%d/%m/%y'),  Type=@Type,   Quantity=IF(@Quantity like '-%', @Quantity * -1, @Quantity), UnitPrice=@UnitPrice, TradeValue=IF(@TradeValue like '-%', @TradeValue * -1, @TradeValue) , BrokerageGST= @BrokerageGST,  GST=@GST,  ContractNote=@ContractNote,  TotalValue=IF(@TotalValue like '-%', @TotalValue * -1, @TotalValue) ;
-
-#LOAD DATA LOCAL INFILE 'C:/Users/a_rathi/LocalDocuments/IT/3105736_2021EOFYTransactions.csv' INTO TABLE stocks.trade FIELDS TERMINATED BY ',' ENCLOSED BY '"' LINES  TERMINATED BY '\n' IGNORE 1 ROWS (@Code,@Company,@Date,@Type,@Quantity,@UnitPrice,@TradeValue,@BrokerageGST,@GST, @ContractNote, @TotalValue) set UserUid=1, Code=@Code , Date=STR_TO_DATE(@Date,'%d/%M/%y'),  Type=@Type,   Quantity=IF(@Quantity like '-%', @Quantity * -1, @Quantity), UnitPrice=@UnitPrice, TradeValue=IF(@TradeValue like '-%', @TradeValue * -1, @TradeValue) , BrokerageGST= @BrokerageGST,  GST=@GST,  ContractNote=@ContractNote,  TotalValue=IF(@TotalValue like '-%', @TotalValue * -1, @TotalValue) ;
-
-
-
 select * from trade limit 10;
 
+CREATE OR REPLACE TABLE files (
+UserUid BIGINT UNSIGNED NOT NULL ,
+FileName VARCHAR(2000) ,
+Filecount int,
+Insertcount int,
+uploadDate DATE,
+CONSTRAINT `fk_files_user`
+    FOREIGN KEY (UserUid) REFERENCES User (UID)
+);
 
 CREATE OR REPLACE TABLE calculate (
 UserUid BIGINT UNSIGNED NOT NULL ,
@@ -101,8 +97,27 @@ SellTradeValue DOUBLE(16,5) UNSIGNED  NOT NULL ,
 BuyTradeValue DOUBLE(16,5) UNSIGNED   NOT NULL ,
 
 ProfitValue DOUBLE(16,5) UNSIGNED  NOT NULL ,
-TaxValue DOUBLE(16,5) UNSIGNED   NOT NULL 
+TaxValue DOUBLE(16,5) UNSIGNED   NOT NULL ,
 
+CONSTRAINT `fk_calc_user`
+    FOREIGN KEY (UserUid) REFERENCES User (UID),
+CONSTRAINT `fk_calc_sellid`
+    FOREIGN KEY (SellUID) REFERENCES trade (UID),
+CONSTRAINT `fk_calc_buyid`
+    FOREIGN KEY (BuyUID) REFERENCES trade (UID)
 );
 
+##LOAD DATA
+
+insert into User (Name , Postcode , Country , Email ) values ('Anand Rathi', '6011', 'Australia', '' );
+
+LOAD DATA LOCAL INFILE 'C:/Users/a_rathi/LocalDocuments/IT/ASX_Listed_Companies_22-07-2021_03-01-26_AEST.csv' INTO TABLE stocks.company FIELDS TERMINATED BY ',' ENCLOSED BY '"' LINES  TERMINATED BY '\n' IGNORE 1 ROWS (Code, Company, Listingdate, GICsindustrygroup, MarketCap, @UpdateFile )  set UpdateFile='ASX_Listed_Companies_22-07-2021_03-01-26_AEST.csv' ;
+
+delete * from trade;
+
+# LOAD DATA LOCAL INFILE 'C:/Users/a_rathi/LocalDocuments/IT/3105736_2019EOFYTransactions.csv' INTO TABLE stocks.trade FIELDS TERMINATED BY ',' ENCLOSED BY '"' LINES  TERMINATED BY  '\n' IGNORE 1 ROWS (@Code,@Company,@Date,@Type,@Quantity,@UnitPrice,@TradeValue,@BrokerageGST,@GST, @ContractNote, @TotalValue) set UserUid=1, Code=@Code , Date=STR_TO_DATE(@Date,'%d/%m/%y'),  Type=@Type,   Quantity=IF(@Quantity like '-%', @Quantity * -1, @Quantity), UnitPrice=@UnitPrice, TradeValue=IF(@TradeValue like '-%', @TradeValue * -1, @TradeValue) , BrokerageGST= @BrokerageGST,  GST=@GST,  ContractNote=@ContractNote,  TotalValue=IF(@TotalValue like '-%', @TotalValue * -1, @TotalValue) ;
+
+#LOAD DATA LOCAL INFILE 'C:/Users/a_rathi/LocalDocuments/IT/3105736_2020EOFYTransactions.csv' INTO TABLE stocks.trade FIELDS TERMINATED BY ',' ENCLOSED BY '"' LINES  TERMINATED BY '\n' IGNORE 1 ROWS (@Code,@Company,@Date,@Type,@Quantity,@UnitPrice,@TradeValue,@BrokerageGST,@GST, @ContractNote, @TotalValue) set UserUid=1, Code=@Code , Date=STR_TO_DATE(@Date,'%d/%m/%y'),  Type=@Type,   Quantity=IF(@Quantity like '-%', @Quantity * -1, @Quantity), UnitPrice=@UnitPrice, TradeValue=IF(@TradeValue like '-%', @TradeValue * -1, @TradeValue) , BrokerageGST= @BrokerageGST,  GST=@GST,  ContractNote=@ContractNote,  TotalValue=IF(@TotalValue like '-%', @TotalValue * -1, @TotalValue) ;
+
+#LOAD DATA LOCAL INFILE 'C:/Users/a_rathi/LocalDocuments/IT/3105736_2021EOFYTransactions.csv' INTO TABLE stocks.trade FIELDS TERMINATED BY ',' ENCLOSED BY '"' LINES  TERMINATED BY '\n' IGNORE 1 ROWS (@Code,@Company,@Date,@Type,@Quantity,@UnitPrice,@TradeValue,@BrokerageGST,@GST, @ContractNote, @TotalValue) set UserUid=1, Code=@Code , Date=STR_TO_DATE(@Date,'%d/%M/%y'),  Type=@Type,   Quantity=IF(@Quantity like '-%', @Quantity * -1, @Quantity), UnitPrice=@UnitPrice, TradeValue=IF(@TradeValue like '-%', @TradeValue * -1, @TradeValue) , BrokerageGST= @BrokerageGST,  GST=@GST,  ContractNote=@ContractNote,  TotalValue=IF(@TotalValue like '-%', @TotalValue * -1, @TotalValue) ;
 
