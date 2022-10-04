@@ -27,54 +27,83 @@ def readCSV(filename):
 def trackSellandBuySQLGrouped( dfs , finyear):
     syear = str.strip(str(finyear))
     syear_1 = str(int(str.strip(str(finyear))) - 1)
-    dfinYearStart = datetime.strptime(f"30/Jun/{syear}", "%d/%b/%Y")
-    dfinYearEnd = datetime.strptime(f"01/Jul/{syear_1}", "%d/%b/%Y")
+    dfinYearStart = datetime.strptime(f"30/Jun/{syear_1}", "%d/%b/%Y")
+    dfinYearEnd = datetime.strptime(f"01/Jul/{syear}", "%d/%b/%Y")
+    finYearStart = f"30/Jun/{syear_1}"
+    finYearEnd = f"01/Jul/{syear}"
     print(f"dfinYearStart {dfinYearStart}")
-    engine = create_engine('sqlite://', echo=False)
-    dfs.to_sql('transactions', con=engine)
+    print(f"finYearStart {finYearStart}")
+    print(f"dfinYearEnd {dfinYearEnd}")
+    print(f"finYearEnd {finYearEnd}")
+    engine = create_engine('sqlite:///tax.db', echo=False)
+    dfs.to_sql('transactions', con=engine, if_exists="replace")
     connection =  engine.connect()
-    selltext = text("""select Code, Date, JULIANDAY(Date) - JULIANDAY(Date) > 364 as YearDiff,
-                    strftime('%Y', Date) as Year, Type, Quantity, UnitPrice, TradeValue, Brokerage_GST,
-                    GST, ContractNote, TotalValue from transactions where Type = :Sell and DATE(Date) BETWEEN DATE(:finYearStart) and DATE(:finYearEnd)""")
-    resulttext = text("select * from matchtbl ORDER by Code")
-    Groupresulttext = text("""select Code, Type, YearDiff,  sum(Quantity*UnitPrice) as Value ,
-                           sum(Quantity) as Quantity
-                           from matchtbl group by Code,  Type, YearDiff ORDER by Code,  Type, YearDiff""")
-    createtext    =     text("""CREATE TABLE matchtbl AS select Code, Date(Date) as Date , JULIANDAY(Date) - JULIANDAY(Date) > 364 as YearDiff,
-                             strftime('%Y', Date) as Year, Type, Quantity, UnitPrice, TradeValue, Brokerage_GST, GST,
-                             TotalValue from transactions WHERE Type = 'Sell' and DATE(Date) >= DATE(:finYearStart) and DATE(Date) <= DATE(:finYearEnd)""")
-    BUYINSERTtext =     text("""INSERT INTO matchtbl     select Code, Date, JULIANDAY(:sdate) - JULIANDAY(Date) > 364 as YearDiff,
-                             strftime('%Y', Date) as Year, Type, Quantity, UnitPrice, TradeValue, Brokerage_GST, GST,
-                             TotalValue from transactions WHERE Code = :Code and Type = 'Buy' and DATE(Date) < :sdate""")
-    SellOldINSERTtext = text("""INSERT INTO matchtbl     select Code, Date,
-                             JULIANDAY(:sdate) - JULIANDAY(Date) > 364 as YearDiff,  strftime('%Y', Date) as Year,
+
+    
+    Createprofitabltext = text("""CREATE TABLE Profittable(  Code TEXT, DaysDiff INT,   
+                               BuyDate DATE,   BuyQuantity INT,   BuyUnitPrice REAL,   BuyTradeValue REAL,   BuyContractNote INT,   
+                               SellDate DATE,   SellQuantity INT,   SellUnitPrice REAL,   BuyTradeValue REAL,   BuyContractNote INT,                                  
+                               SellContractNote INT ) """)
+    connection.execute(text("drop TABLE IF EXISTS Sellmatchtbl" ))
+    CreateSellmatchtbltext    =     text("""CREATE TABLE Sellmatchtbl AS select Code, Date(Date) as Date , JULIANDAY(Date) - JULIANDAY(Date) as YearDiff,
                              Type, Quantity, UnitPrice, TradeValue, Brokerage_GST, GST,
-                             TotalValue from transactions WHERE Code = :Code and Type = 'Sell' and DATE(Date) < :finYearStart """)
+                             TotalValue, ContractNote from transactions WHERE Type = 'Sell' and DATE(Date) >= DATE(:finYearStart) and DATE(Date) <= DATE(:finYearEnd) """)
+                             
+    connection.execute(CreateSellmatchtbltext, finYearStart=dfinYearStart, finYearEnd=dfinYearEnd )
+    SellatchtableText = text("select * from Sellmatchtbl ORDER by Code")
+    tresult = connection.execute(SellatchtableText)
+    print(" matchtbl First Count {} ".format( len(tresult.all())) )
+
+    connection.execute(text("drop TABLE IF EXISTS Buymatchtbl" ))
+    createtext    =     text("""create table Buymatchtbl AS select *, ContractNote as SellContractNote  from Sellmatchtbl where 0""")
+                             
     connection.execute(createtext, finYearStart=dfinYearStart, finYearEnd=dfinYearEnd )
-    tresult = connection.execute(resulttext)
-    print(" matchtbl First Count {} {}".format( len(tresult.all()), selltext) )
+    BuyMatchtableText = text("select * from Buymatchtbl ")
+    tresult = connection.execute(BuyMatchtableText)
+    print(" matchtbl First Count {} ".format( len(tresult.all())) )
 
     try:
-        result = connection.execute(selltext, Sell="Sell", finYearStart=dfinYearStart, finYearEnd=dfinYearEnd ).fetchall()
-        print(result)
-        for row in result:
+        Sell_Text = text("""select Code, Date, 
+                    strftime('%Y', Date) as Year, Type, Quantity, UnitPrice, TradeValue, Brokerage_GST,
+                    GST, ContractNote, TotalValue from transactions where Type = :Sell and DATE(Date) >= DATE(:finYearStart) and DATE(Date) <= DATE(:finYearEnd) """)
+        Sell_Text_result = connection.execute(Sell_Text, Sell="Sell", finYearStart=dfinYearStart, finYearEnd=dfinYearEnd ).fetchall()
+        print(Sell_Text_result)
+
+        BuyINSERTtext =     text("""INSERT INTO Buymatchtbl select Code, Date, JULIANDAY(:sdate) - JULIANDAY(Date) as YearDiff,
+                                  Type, Quantity, UnitPrice, TradeValue, Brokerage_GST, GST,
+                                  TotalValue , ContractNote , :sellContractNote as SellContractNote from transactions WHERE Code = :Code and DATE(Date) < :sdate and ContractNote <> :sellContractNote """)
+
+        #SellOldINSERTtext = text("""INSERT INTO Buymatchtbl select Code, Date,
+        #                          JULIANDAY(:sdate) - JULIANDAY(Date) as YearDiff,  strftime('%Y', Date) as Year,
+        #                          Type, Quantity, UnitPrice, TradeValue, Brokerage_GST, GST,
+        #                          TotalValue from transactions WHERE Code = :Code and Type = 'Sell' and DATE(Date) < :finYearStart """)
+        for row in Sell_Text_result:
             print("Code:", row['Code'] , "Year", row['Year'])
-            _ = connection.execute(BUYINSERTtext, Code=row['Code'], sdate=row['Date'] )
-            tresult = connection.execute(resulttext)
-            print("Buy  Code {} Count {}".format( row['Code'] , len(tresult.all())) )
-            _ = connection.execute(SellOldINSERTtext, Code=row['Code'], finYearStart=dfinYearStart , sdate=row['Date']  )
-            tresult = connection.execute(resulttext)
+            _ = connection.execute(BuyINSERTtext, Code=row['Code'], sdate=row['Date'] , sellContractNote = row['ContractNote'])
+            #tresult = connection.execute(AllMatchtableText)
+            #print("Buy  Code {} Count {}".format( row['Code'] , len(tresult.all())) )
+            #_ = connection.execute(SellOldINSERTtext, Code=row['Code'], finYearStart=dfinYearStart , sdate=row['Date']  )
+            tresult = connection.execute(BuyMatchtableText)
             print("Sell  Code {} Count {}".format( row['Code'] , len(tresult.all())) )
             print(" matchtbl 1 Count {}".format( len(tresult.all())) )
 
-        tresult = connection.execute(resulttext)
+        tresult = connection.execute(BuyMatchtableText)
         print("Final Count {}".format( len(tresult.all()))  )
-        table_df = pd.read_sql(resulttext, con=engine)
+        table_df = pd.read_sql(BuyMatchtableText, con=engine)
         table_df.to_csv(f"{syear}_Match.csv")
 
-        tresult = connection.execute(Groupresulttext)
+        connection.execute(text("drop TABLE IF EXISTS GroupMatchtbl" ))
+        Groupresulttext = text("""create TABLE GroupMatchtbl As select 
+                               Sellmatchtbl.Code as SellCode, Sellmatchtbl.Date  as SellDate,  Sellmatchtbl.Quantity*Sellmatchtbl.UnitPrice as SellValue , Sellmatchtbl.Quantity as SellQuantity,
+                               Buymatchtbl.Code as BuyCode, Buymatchtbl.Date  as BuyDate,  Buymatchtbl.Quantity*Buymatchtbl.UnitPrice as BuyValue , Buymatchtbl.Quantity as BuyQuantity,
+                              Buymatchtbl.YearDiff  as BuyDaysDiff   
+                           from Sellmatchtbl, Buymatchtbl where Sellmatchtbl.Code = Buymatchtbl.Code and Buymatchtbl.Date <= Sellmatchtbl.Date """)
+        connection.execute(Groupresulttext)
+        
+        selectGroupMatchtbl = "select * from GroupMatchtbl"
+        tresult = connection.execute(text(selectGroupMatchtbl ))
         print("Group Final Count {}".format( len(tresult.all()))  )
-        table_df = pd.read_sql(Groupresulttext, con=engine)
+        table_df = pd.read_sql(selectGroupMatchtbl, con=engine)
         table_df.to_csv(f"{syear}_GroupMatch.csv")
 
     except Exception as e:
@@ -109,7 +138,6 @@ def main():
         sys.exit(-2)
 
     dfs = None
-    engine = create_engine('sqlite://', echo=True)
 
     for filename in args.listFiles:
         print(f'filename : {filename}')
@@ -132,7 +160,6 @@ def main():
                     sys.exit(-2)
 
     try:
-        #trackSellandBuySQL( dfs , year=taxYear)
         trackSellandBuySQLGrouped( dfs=dfs , finyear=taxYear)
     except Exception as e:
         print(f"trackSellandBuySQL {e}")
