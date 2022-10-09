@@ -16,16 +16,15 @@ from pandas import read_sql
 from pandas import concat
 from datetime import date
 from datetime import datetime
-# import sqlite3
 from sqlalchemy import create_engine
 from sqlalchemy.sql import text
 import csv
+
 def readCSV(filename):
     try:
         df = read_csv(filename)
     except Exception as e:
         print(f"\n Error: read CSV {e}")
-
         return None
     return df
 
@@ -44,7 +43,7 @@ def writeCSV(filename, rows):
         print(f"\n Error: read CSV {e}")
 
         return None
-    return df
+    return None
 
 def trackSellandBuySQLGrouped( dfs , finyear, engine, verbose):
     syear = str.strip(str(finyear))
@@ -112,17 +111,17 @@ def trackSellandBuySQLGrouped( dfs , finyear, engine, verbose):
                                   Code = :Code AND DATE(Date) < :sdate AND ContractNote <> :sellContractNote
                                   AND Type = "Buy"  ORDER BY  UnitPrice DESC, Date  DESC
                                   """)
-        SelectProfitabltext = text("""SELECT Code, Quantity, BuyContractNote, SellContractNote, SellDate
+        SelectProfitabltext = text("""SELECT Code, sum(Quantity) as Quantity
                                    FROM TaxProfitTable
-                                   WHERE Code = :Code  AND BuyContractNote = :BuyContractNote """)
+                                   WHERE Code = :Code  AND BuyContractNote = :BuyContractNote
+                                   GROUP BY Code, BuyContractNote
+                                   """)
 
         #SellOldINSERTtext = text("""INSERT INTO Buymatchtbl select Code, Date,
         #                          JULIANDAY(:sdate) - JULIANDAY(Date) as YearDiff,  strftime('%Y', Date) as Year,
         #                          Type, Quantity, UnitPrice, TradeValue, Brokerage_GST, GST,
         #                          TotalValue from transactions WHERE Code = :Code and Type = 'Sell' and DATE(Date) < :finYearStart """)
         for row in Sell_Text_result:
-            if row['Code'] == 'PAB':
-                print(f'DEBUG PAB {row}')
             if verbose:
                 print( f" Sell Details : {row}" )
             #tresult = connection.execute(AllMatchtableText)
@@ -131,8 +130,6 @@ def trackSellandBuySQLGrouped( dfs , finyear, engine, verbose):
             Buy_Text_result = connection.execute(SelectBuytext, Code=row['Code'], sdate=row['Date'], sellContractNote=row["ContractNote"] )
             sellQty = abs(int(row["Quantity"]))
             for buyrow in Buy_Text_result:
-                if row['Code'] == 'PAB':
-                    print(f'buyrow={buyrow}')
                 Sold_result = connection.execute(SelectProfitabltext, Code=row['Code'], BuyContractNote=buyrow["ContractNote"] )
                 Sold_rows = Sold_result.fetchall()
                 if len(Sold_rows) >1:
@@ -141,8 +138,6 @@ def trackSellandBuySQLGrouped( dfs , finyear, engine, verbose):
                    Sold_row=Sold_rows[0]
                 else:
                     Sold_row=None
-                if row['Code'] == 'PAB':
-                    print(f'Sold_result={Sold_row}')
                 if Sold_row:
                     SoldQty = abs(int(Sold_row["Quantity"]))
                 else:
@@ -150,8 +145,6 @@ def trackSellandBuySQLGrouped( dfs , finyear, engine, verbose):
 
                 buyQty = abs(int(buyrow["Quantity"]))
                 NetBuyQty = buyQty - SoldQty
-                if row['Code'] == 'PAB':
-                    print(f'sellQty = {sellQty}, SoldQty= {SoldQty}, buyQty={buyQty}, NetBuyQty={NetBuyQty}')
                 if NetBuyQty == 0:
                     continue
                 if NetBuyQty < sellQty:
@@ -165,8 +158,6 @@ def trackSellandBuySQLGrouped( dfs , finyear, engine, verbose):
                     sellQty = sellQty - NetBuyQty
                     if verbose:
                         print(f" buy details = {buyrow} " )
-                    if row['Code'] == 'PAB':
-                        print(f'NetBuyQty < sellQty')
                 elif NetBuyQty >= sellQty:
                     connection.execute(INSERTprofitabltext,
                             Code=row['Code'], Quantity=sellQty,
@@ -176,10 +167,8 @@ def trackSellandBuySQLGrouped( dfs , finyear, engine, verbose):
                             SaleUnitPrice=row['UnitPrice']
                                )
                     sellQty = 0
-                    if row['Code'] == 'PAB':
-                        print(f'NetBuyQty > sellQty')
                     if verbose:
-                        print(f" buy details ={buyrow} " )
+                        print(f" Buy details ={buyrow} " )
                     break
 
         ProfitLossTransactionJoin = """
@@ -272,15 +261,40 @@ def trackSellandBuySQLGrouped( dfs , finyear, engine, verbose):
 
         """  + ProfitLossTransactionJoin
 
-        #tresult = connection.execute(ProfitLossTransactionJoin, finYearStart=finYearStart, finYearEnd=finYearEnd )
         table_df = read_sql(ProfitLossgroupJoin, con=engine, params={"finYearStart":finYearStart, "finYearEnd":finYearEnd })
         print(f"Generating ... : {syear}_ProfitLoss.csv")
         table_df['Date']= to_datetime(table_df['Date'])
         table_df.to_csv(f"{syear}_ProfitLoss.csv", index_label="index", date_format="%Y-%m-%d", doublequote= True)
         print(f"Successfuly Generated  : {syear}_ProfitLoss.csv")
-        grp_df = table_df.groupby(['Code', 'Type'], as_index=False).agg({'SellQuantity': "sum", 'BuyQuantity': "sum", 'Amount': "sum", 'GainAmount': "sum", 'Expenses': "sum", 'Taxable_GainLoss': "sum" })
-        grp_df.to_csv(f'{syear}_GroupProfitLoss.csv', index_label="index",)
-        print(f"Successfuly Generated : {syear}_GroupProfitLoss.csv")
+
+        ProfitLossGrandTot =  "SELECT * from (" + ProfitLossgroupJoin  + """) AS T2
+
+            UNION
+
+            SELECT
+            'X Total' AS Code,
+            min(Date) AS Date,
+    		'Grand Totals' as Type,
+            4 AS Typeord,
+            SUM(Qty) AS Qty,
+            SUM(SellQuantity) AS SellQuantity,
+            SUM(BuyQuantity) AS BuyQuantity,
+    		0.0 AS UnitPrice,
+    		Sum(0.0) AS Amount,
+    		0 AS ContractNote,
+    		0 AS Dtdifference,
+    		Sum(GainAmount) AS GainAmount,
+    		Sum(Expenses) AS Expenses,
+    		Sum(Taxable_GainLoss) AS Taxable_GainLoss,
+    		SUM(SubTotalExpenses) AS TotalExpenses,
+    		SUM(SubTotalGainAmount) AS TotalGainAmount,
+    		SUM(SubTotalTaxable_GainLoss)  AS TotalTaxable_GainLoss
+            FROM (  """  + ProfitLossgroupJoin + " ) AS Tempt  ORDER by Code , Typeord , Date Desc "
+
+        grp_df = read_sql(ProfitLossGrandTot, con=engine, params={"finYearStart":finYearStart, "finYearEnd":finYearEnd })
+
+        grp_df.to_csv(f'{syear}_GrandTotalProfitLoss.csv', index_label="index",)
+        print(f"Successfuly Generated : {syear}_GrandTotalProfitLoss.csv")
         print(f"GainAmount Negative is Loss , Positive is Profit")
         print(f"TaxableAmount  Negative is Loss , Positive is Profit")
         print(f"Quantity  Negative is Sell , Positive is Buy")
