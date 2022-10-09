@@ -243,7 +243,7 @@ def trackSellandBuySQLGrouped( dfs , finyear, engine, verbose):
 				  transactions.Type = "Buy"
 			  AND
 				  transactions.ContractNote = NTaxProfitTable.BuyContractNote
-			ORDER by Code , Typeord Desc, Date Desc
+			ORDER by Code , Typeord , Date Desc
 
                                   """
 
