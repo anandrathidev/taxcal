@@ -8,7 +8,6 @@ Created on Sun Oct  2 20:05:30 2022
 #import pandas as pd
 import sys
 import argparse
-from pandas import DataFrame
 from pandas import read_csv
 from pandas import to_numeric
 from pandas import to_datetime
