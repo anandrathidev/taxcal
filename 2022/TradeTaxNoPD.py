@@ -19,6 +19,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.sql import text
 import csv
 
+
 def readCSV(filename):
     try:
         df = read_csv(filename)
@@ -311,6 +312,7 @@ def main():
     print(INPUTCSVFORMAT)
     CLI=argparse.ArgumentParser(prog="TradeTax.exe", usage='%(prog)s [options]')
     CLI.add_argument("-v", action='store_true', default=False)
+    CLI.add_argument('--version', action='version', version='%(prog)s 1.1')
     CLI.add_argument(
       "--taxyear",  # name on the CLI - drop the `--` for positional/required parameters
       type=str,
