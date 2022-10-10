@@ -271,7 +271,7 @@ def trackSellandBuySQLGrouped( dfs , finyear, engine, verbose):
             UNION
 
             SELECT
-            'X Total' AS Code,
+            'ZZZ_Total' AS Code,
             min(Date) AS Date,
     		'Grand Totals' as Type,
             4 AS Typeord,
