@@ -97,7 +97,7 @@ def trackSellandBuySQLGrouped( dfs , finyear, engine, verbose):
                         DATE(Date) >= DATE(:finYearStart)
                         AND
                         DATE(Date) <= DATE(:finYearEnd)
-                        ORDER BY  UnitPrice DESC, Date DESC
+                        ORDER BY  Date , UnitPrice 
                         """)
         Sell_Text_result = connection.execute(Sell_Text, finYearStart=finYearStart, finYearEnd=finYearEnd ).fetchall()
         if verbose:
@@ -105,7 +105,12 @@ def trackSellandBuySQLGrouped( dfs , finyear, engine, verbose):
 
         SelectBuytext =     text("""SELECT Code, Date, JULIANDAY(:sdate) - JULIANDAY(Date) as DayDiff,
                                   Type, Quantity, UnitPrice, TradeValue, Brokerage_GST, GST,
-                                  TotalValue , ContractNote
+                                  TotalValue , ContractNote,
+        		CASE
+        		WHEN  ( :SaleUnitPrice - transactions.UnitPrice ) > 0.0  AND (JULIANDAY(:sdate) - JULIANDAY(transactions.Date)) > 364 THEN 0.5 * ( :SaleUnitPrice - transactions.UnitPrice )
+        		WHEN  ( :SaleUnitPrice - transactions.UnitPrice ) > 0.0  AND (JULIANDAY(:sdate) - JULIANDAY(transactions.Date)) <= 364 THEN ( :SaleUnitPrice - transactions.UnitPrice )
+        		WHEN  ( :SaleUnitPrice - transactions.UnitPrice ) < 0.0  THEN ( :SaleUnitPrice - transactions.UnitPrice )
+        		END AS Taxable_GainLoss
                                   FROM transactions
                                   WHERE
                                   Code = :Code AND DATE(Date) < :sdate AND ContractNote <> :sellContractNote
@@ -127,7 +132,7 @@ def trackSellandBuySQLGrouped( dfs , finyear, engine, verbose):
             #tresult = connection.execute(AllMatchtableText)
             #print("Buy  Code {} Count {}".format( row['Code'] , len(tresult.all())) )
             #_ = connection.execute(SellOldINSERTtext, Code=row['Code'], finYearStart=dfinYearStart , sdate=row['Date']  )
-            Buy_Text_result = connection.execute(SelectBuytext, Code=row['Code'], sdate=row['Date'], sellContractNote=row["ContractNote"] )
+            Buy_Text_result = connection.execute(SelectBuytext, Code=row['Code'], sdate=row['Date'], sellContractNote=row["ContractNote"], SaleUnitPrice = row['UnitPrice'] )
             sellQty = abs(int(row["Quantity"]))
             for buyrow in Buy_Text_result:
                 Sold_result = connection.execute(SelectProfitabltext, Code=row['Code'], BuyContractNote=buyrow["ContractNote"] )
